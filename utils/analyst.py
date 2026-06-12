@@ -22,7 +22,7 @@ def _call_mistral(messages, max_tokens=800, temperature=0.3):
             "max_tokens": max_tokens,
             "temperature": temperature,
         },
-        timeout=60,
+        timeout=90,          # raised from 60 — large briefs take longer
     )
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
@@ -32,15 +32,15 @@ def build_dataset_context(df, col_map, analytics_summary):
     parts = []
     parts.append(f"DATASET: {len(df)} orders, {list(df.columns)}")
 
-    net_col = col_map.get("net_revenue")
+    net_col    = col_map.get("net_revenue")
     profit_col = col_map.get("profit")
 
     if net_col and net_col in df.columns:
         total_rev = df[net_col].sum()
         avg_order = df[net_col].mean()
         parts.append(
-            f"REVENUE: Total net revenue = ₦{total_rev:,.0f} | "
-            f"Avg order = ₦{avg_order:,.0f}"
+            f"REVENUE: Total net revenue = NGN {total_rev:,.0f} | "
+            f"Avg order = NGN {avg_order:,.0f}"
         )
 
     if profit_col and profit_col in df.columns:
@@ -51,9 +51,9 @@ def build_dataset_context(df, col_map, analytics_summary):
             else None
         )
         parts.append(
-            f"PROFIT: Total = ₦{total_profit:,.0f} | Margin = {margin:.1f}%"
+            f"PROFIT: Total = NGN {total_profit:,.0f} | Margin = {margin:.1f}%"
             if margin is not None
-            else f"PROFIT: ₦{total_profit:,.0f}"
+            else f"PROFIT: NGN {total_profit:,.0f}"
         )
 
     ret_col = col_map.get("return_status")
@@ -114,7 +114,7 @@ Your role:
 - Give actionable, specific recommendations tied to the numbers above
 - Think like a senior retail consultant for a growing Nigerian business
 - Reference the NGN figures, channel names, product categories from the data
-- Be concise but substantive — 2–4 paragraphs maximum
+- Be concise but substantive — 2-4 paragraphs maximum
 - Always end with ONE specific recommended action
 
 NEVER say "I don't have access to the data" — the full data profile is above.
@@ -130,50 +130,18 @@ NEVER give generic advice — tie everything to the specific numbers you have be
 
     answer = _call_mistral(messages, max_tokens=800, temperature=0.3)
 
-    chat_history.append({"role": "user", "content": question})
+    chat_history.append({"role": "user",      "content": question})
     chat_history.append({"role": "assistant", "content": answer})
     return answer, chat_history
 
 
-def generate_executive_brief(df, col_map, analytics_summary):
+def generate_executive_brief(df, col_map, prompt):
     """
-    Auto-generate a one-page executive retail brief without the user asking.
+    Generate executive brief from a fully-formed prompt passed by app.py.
+    max_tokens raised to 2500 so all 5 sections render completely.
     """
-    dataset_context = build_dataset_context(df, col_map, analytics_summary)
-
-    prompt = f"""Based on this retail dataset analysis, write a concise executive brief.
-
-Dataset profile:
-{dataset_context}
-
-Format the brief EXACTLY as follows — do not deviate from this structure:
-
-NEXUS RETAIL EXECUTIVE BRIEF
-Date: [today's date]
-Prepared by: NEXUS Retail Intelligence System
-
-SITUATION
-[2 sentences: what is the overall revenue and profitability situation?]
-
-THREE CRITICAL FINDINGS
-1. [Finding with specific number from the data]
-2. [Finding with specific number from the data]
-3. [Finding with specific number from the data]
-
-ESTIMATED REVENUE AT RISK
-[Specific figure in NGN — returns + negative profit + discount leakage combined]
-
-THREE RECOMMENDED ACTIONS (Next 90 Days)
-1. [Specific action with target category/channel and expected outcome]
-2. [Specific action with target category/channel and expected outcome]
-3. [Specific action with target category/channel and expected outcome]
-
-PRIORITY FOCUS THIS WEEK
-[One sentence: the single most important thing to do this week]
-"""
-
     return _call_mistral(
         [{"role": "user", "content": prompt}],
-        max_tokens=700,
+        max_tokens=2500,     # was 700 / 1000 — needs room for 550-700 word brief
         temperature=0.2,
     )
