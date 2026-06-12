@@ -1,193 +1,300 @@
-from fpdf import FPDF
-import pandas as pd
+"""
+utils/report.py — PDF generation via reportlab.
+Fixed: section markers styled as headers, proper bullet/numbered lists.
+"""
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    HRFlowable, KeepTogether, ListFlowable, ListItem,
+)
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+import io, re
 from datetime import datetime
-import re
 
-# ── Font paths (DejaVu supports Unicode incl. ₦) ──────────────────────────────
-_FONT_DIR = "/usr/share/fonts/truetype/dejavu/"
-_FONT_REG  = _FONT_DIR + "DejaVuSans.ttf"
-_FONT_BOLD = _FONT_DIR + "DejaVuSans-Bold.ttf"
-_FONT_ITAL = _FONT_DIR + "DejaVuSans-Oblique.ttf"
-
-# Accent colour (deep green)
-_GREEN = (30, 80, 30)
-_LIGHT_GREEN_FILL = (235, 245, 235)
+_GREEN       = colors.HexColor("#1E501E")
+_LIGHT_GREEN = colors.HexColor("#EBF5EB")
+_GREY_TEXT   = colors.HexColor("#323232")
+_GREY_LIGHT  = colors.HexColor("#787878")
+_RED         = colors.HexColor("#C83232")
+_ORANGE      = colors.HexColor("#B46414")
+_PAGE_W, _PAGE_H = A4
 
 
 def _sanitize(text: str) -> str:
-    """
-    Replace characters that cause issues even with Unicode fonts,
-    and normalise common smart-quotes / dashes.
-    """
     if not isinstance(text, str):
         text = str(text)
     replacements = {
-        "\u20a6": "NGN ",   # ₦  → NGN  (keep it readable without the glyph)
-        "\u2019": "'",      # right single quote
-        "\u2018": "'",      # left single quote
-        "\u201c": '"',      # left double quote
-        "\u201d": '"',      # right double quote
-        "\u2013": "-",      # en dash
-        "\u2014": "--",     # em dash
-        "\u2022": "-",      # bullet •
-        "\u00b7": "·",      # middle dot (already Latin-1, keep)
-        "\u2026": "...",    # ellipsis
+        "\u20a6": "NGN ", "\u2019": "'", "\u2018": "'",
+        "\u201c": '"',    "\u201d": '"', "\u2013": "-",
+        "\u2014": "--",   "\u2022": "-", "\u2026": "...",
+        "\u00b7": "-",
     }
-    for char, replacement in replacements.items():
-        text = text.replace(char, replacement)
-    # Strip any remaining non-Latin-1 characters that DejaVu might miss
-    # (rare, but safe fallback)
+    for ch, rep in replacements.items():
+        text = text.replace(ch, rep)
     text = text.encode("latin-1", errors="replace").decode("latin-1")
     return text
 
 
-class NexusRetailReport(FPDF):
+def _styles():
+    base = getSampleStyleSheet()
+    return {
+        "cover_title": ParagraphStyle(
+            "cover_title", parent=base["Title"],
+            fontSize=20, textColor=_GREEN, spaceAfter=6, alignment=TA_CENTER),
+        "cover_sub": ParagraphStyle(
+            "cover_sub", parent=base["Normal"],
+            fontSize=10, textColor=_GREY_LIGHT, spaceAfter=4, alignment=TA_CENTER),
+        "section_main": ParagraphStyle(
+            "section_main", parent=base["Heading2"],
+            fontSize=12, textColor=_GREEN, spaceBefore=14, spaceAfter=4),
+        "section_sub": ParagraphStyle(
+            "section_sub", parent=base["Heading3"],
+            fontSize=11, textColor=_GREEN, spaceBefore=10, spaceAfter=3),
+        "body": ParagraphStyle(
+            "body", parent=base["Normal"],
+            fontSize=10, textColor=_GREY_TEXT, leading=15, spaceAfter=6),
+        "bullet": ParagraphStyle(
+            "bullet", parent=base["Normal"],
+            fontSize=10, textColor=_GREY_TEXT, leading=15,
+            leftIndent=16, spaceAfter=5),
+        "kpi_label": ParagraphStyle(
+            "kpi_label", parent=base["Normal"],
+            fontSize=10, textColor=_GREEN, fontName="Helvetica-Bold"),
+        "kpi_value": ParagraphStyle(
+            "kpi_value", parent=base["Normal"],
+            fontSize=10, textColor=_GREY_TEXT),
+        "alert_crit": ParagraphStyle(
+            "alert_crit", parent=base["Normal"],
+            fontSize=10, textColor=_RED, fontName="Helvetica-Bold", spaceAfter=2),
+        "alert_warn": ParagraphStyle(
+            "alert_warn", parent=base["Normal"],
+            fontSize=10, textColor=_ORANGE, fontName="Helvetica-Bold", spaceAfter=2),
+        "alert_body": ParagraphStyle(
+            "alert_body", parent=base["Normal"],
+            fontSize=9, textColor=_GREY_TEXT, leading=13, spaceAfter=8),
+        "footer_note": ParagraphStyle(
+            "footer_note", parent=base["Normal"],
+            fontSize=8, textColor=_GREY_LIGHT, leading=12, spaceBefore=10),
+    }
 
-    def __init__(self):
-        super().__init__()
-        # Register DejaVu (Unicode-capable) font family
-        self.add_font("DejaVu",       "", _FONT_REG,  uni=True)
-        self.add_font("DejaVu", "B",  _FONT_BOLD,     uni=True)
-        self.add_font("DejaVu", "I",  _FONT_ITAL,     uni=True)
 
-    def header(self):
-        self.set_font("DejaVu", "B", 13)
-        self.set_text_color(*_GREEN)
-        self.cell(0, 10,
-                  "NEXUS Retail | Sales & Revenue Intelligence Report",
-                  new_x="LMARGIN", new_y="NEXT", align="C")
-        self.set_draw_color(*_GREEN)
-        self.line(10, self.get_y(), 200, self.get_y())
-        self.ln(4)
+def _section_block(title: str, S: dict):
+    data = [[Paragraph(_sanitize(title), S["section_main"])]]
+    tbl = Table(data, colWidths=[_PAGE_W - 4*cm])
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,-1), _LIGHT_GREEN),
+        ("LEFTPADDING",   (0,0), (-1,-1), 8),
+        ("RIGHTPADDING",  (0,0), (-1,-1), 8),
+        ("TOPPADDING",    (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("LINEBELOW",     (0,0), (-1,-1), 1, _GREEN),
+    ]))
+    return tbl
 
-    def footer(self):
-        self.set_y(-15)
-        self.set_font("DejaVu", "I", 8)
-        self.set_text_color(128, 128, 128)
-        self.cell(0, 10,
-                  f"Generated by NEXUS Retail  |  Page {self.page_no()}  |  "
-                  f"{datetime.now().strftime('%B %d, %Y')}",
-                  align="C")
 
-    def section_title(self, title: str):
-        self.set_font("DejaVu", "B", 11)
-        self.set_text_color(*_GREEN)
-        self.set_fill_color(*_LIGHT_GREEN_FILL)
-        self.cell(0, 8, f"  {_sanitize(title)}",
-                  new_x="LMARGIN", new_y="NEXT", fill=True)
-        self.ln(2)
+def _kpi_table(rows, S):
+    data = [
+        [Paragraph(_sanitize(lbl), S["kpi_label"]),
+         Paragraph(_sanitize(str(val)), S["kpi_value"])]
+        for lbl, val in rows
+    ]
+    tbl = Table(data, colWidths=[7*cm, _PAGE_W - 4*cm - 7*cm])
+    tbl.setStyle(TableStyle([
+        ("VALIGN",        (0,0), (-1,-1), "TOP"),
+        ("ROWBACKGROUNDS",(0,0), (-1,-1), [colors.white, colors.HexColor("#F5FAF5")]),
+        ("LEFTPADDING",   (0,0), (-1,-1), 4),
+        ("RIGHTPADDING",  (0,0), (-1,-1), 4),
+        ("TOPPADDING",    (0,0), (-1,-1), 3),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+    ]))
+    return tbl
 
-    def body_text(self, text: str):
-        self.set_font("DejaVu", "", 10)
-        self.set_text_color(50, 50, 50)
-        self.multi_cell(0, 6, _sanitize(text))
-        self.ln(2)
 
-    def kpi_row(self, label: str, value: str):
-        self.set_font("DejaVu", "B", 10)
-        self.set_text_color(*_GREEN)
-        self.cell(80, 7, _sanitize(label), border=0)
-        self.set_font("DejaVu", "", 10)
-        self.set_text_color(50, 50, 50)
-        self.cell(0, 7, _sanitize(str(value)), border=0,
-                  new_x="LMARGIN", new_y="NEXT")
+def _on_page(canvas, doc):
+    canvas.saveState()
+    w, h = A4
+    canvas.setStrokeColor(_GREEN)
+    canvas.setLineWidth(1)
+    canvas.line(2*cm, h - 1.8*cm, w - 2*cm, h - 1.8*cm)
+    canvas.setFont("Helvetica-Bold", 9)
+    canvas.setFillColor(_GREEN)
+    canvas.drawString(2*cm, h - 1.5*cm, "NEXUS Retail | Revenue Intelligence Report")
+    canvas.setFont("Helvetica", 8)
+    canvas.setFillColor(_GREY_LIGHT)
+    canvas.drawCentredString(
+        w / 2, 1.2*cm,
+        f"Generated by NEXUS Retail  |  Page {doc.page}  |  "
+        f"{datetime.now().strftime('%B %d, %Y')}",
+    )
+    canvas.restoreState()
+
+
+# Section marker pattern: == SOME TITLE ==
+_MARKER_RE = re.compile(r'^==\s*(.+?)\s*==$')
+# Numbered list item: "1. text" or "1) text"
+_NUM_RE    = re.compile(r'^\d+[.)]\s+(.*)')
+# Bullet: "- text" or "• text"
+_BUL_RE    = re.compile(r'^[-•*]\s+(.*)')
+
+
+def _brief_to_story(brief_text: str, S: dict) -> list:
+    """
+    Parse the AI executive brief into reportlab flowables.
+    Handles == SECTION == markers, numbered lists, bullet lists, and paragraphs.
+    """
+    story = []
+    lines = brief_text.strip().splitlines()
+
+    # Group consecutive list items together
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+
+        if not line:
+            story.append(Spacer(1, 4))
+            i += 1
+            continue
+
+        # Section marker → green sub-heading
+        m = _MARKER_RE.match(line)
+        if m:
+            heading = m.group(1).title()
+            story.append(Spacer(1, 6))
+            story.append(Paragraph(_sanitize(heading), S["section_sub"]))
+            story.append(HRFlowable(
+                width="100%", thickness=0.5, color=_GREEN, spaceAfter=3))
+            i += 1
+            continue
+
+        # Collect consecutive numbered items into one ListFlowable
+        if _NUM_RE.match(line):
+            items = []
+            while i < len(lines) and _NUM_RE.match(lines[i].strip()):
+                content = _NUM_RE.match(lines[i].strip()).group(1)
+                items.append(ListItem(
+                    Paragraph(_sanitize(content), S["body"]),
+                    leftIndent=20, value="circle",
+                ))
+                i += 1
+            story.append(ListFlowable(
+                items, bulletType="bullet",
+                leftIndent=10, spaceAfter=4,
+            ))
+            continue
+
+        # Collect consecutive bullet items
+        if _BUL_RE.match(line):
+            items = []
+            while i < len(lines) and _BUL_RE.match(lines[i].strip()):
+                content = _BUL_RE.match(lines[i].strip()).group(1)
+                items.append(ListItem(
+                    Paragraph(_sanitize(content), S["body"]),
+                    leftIndent=20,
+                ))
+                i += 1
+            story.append(ListFlowable(
+                items, bulletType="bullet",
+                leftIndent=10, spaceAfter=4,
+            ))
+            continue
+
+        # Regular paragraph
+        story.append(Paragraph(_sanitize(line), S["body"]))
+        i += 1
+
+    return story
 
 
 def generate_pdf_report(df, col_map, analytics_summary,
                         executive_brief, trust_report, alerts):
-    """
-    Generate a complete PDF report of the NEXUS Retail analysis.
-    Returns bytes that can be downloaded from Streamlit.
-    """
-    pdf = NexusRetailReport()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=2*cm, rightMargin=2*cm,
+        topMargin=2.5*cm, bottomMargin=2*cm,
+    )
+    S = _styles()
+    story = []
     today = datetime.now().strftime("%B %d, %Y")
 
     # ── Cover ──────────────────────────────────────────────────────────
-    pdf.set_font("DejaVu", "B", 18)
-    pdf.set_text_color(*_GREEN)
-    pdf.ln(5)
-    pdf.cell(0, 12, "Retail Sales & Revenue Intelligence Report",
-             new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.set_font("DejaVu", "", 10)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 6,
-             f"Generated: {today}  |  Dataset: {len(df):,} orders  |  "
-             "Powered by NEXUS Retail",
-             new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.ln(6)
+    story.append(Spacer(1, 1*cm))
+    story.append(Paragraph(
+        "Retail Sales & Revenue Intelligence Report", S["cover_title"]))
+    story.append(Paragraph(
+        f"Generated: {today}  |  Dataset: {len(df):,} orders  |  Powered by NEXUS Retail",
+        S["cover_sub"]))
+    story.append(HRFlowable(
+        width="100%", thickness=1, color=_GREEN, spaceAfter=16))
 
-    # ── Data Trust Report ──────────────────────────────────────────────
-    pdf.section_title("1. DATA QUALITY ASSESSMENT")
+    # ── 1. Data Quality ────────────────────────────────────────────────
+    story.append(_section_block("1. DATA QUALITY ASSESSMENT", S))
+    story.append(Spacer(1, 4))
     if trust_report:
         score = trust_report.get("trust_score", "N/A")
-        if isinstance(score, (int, float)):
-            label = ("Excellent" if score >= 90 else
-                     "Good"      if score >= 75 else
-                     "Fair"      if score >= 60 else "Poor")
-        else:
-            label = "N/A"
-        pdf.kpi_row("Data Trust Score:",        f"{score}/100 ({label})")
-        pdf.kpi_row("Original Rows:",           str(trust_report.get("original_rows", "N/A")))
-        pdf.kpi_row("Rows After Cleaning:",     str(trust_report.get("final_rows",    "N/A")))
-        pdf.kpi_row("Duplicate Rows Removed:",  str(trust_report.get("rows_removed",  0)))
-        pdf.kpi_row("Issues Found:",            str(len(trust_report.get("issues_found", []))))
+        label = ("N/A" if not isinstance(score, (int, float)) else
+                 "Excellent" if score >= 90 else "Good" if score >= 75
+                 else "Fair" if score >= 60 else "Poor")
+        story.append(_kpi_table([
+            ("Data Trust Score:",      f"{score}/100 ({label})"),
+            ("Original Rows:",         str(trust_report.get("original_rows", "N/A"))),
+            ("Rows After Cleaning:",   str(trust_report.get("final_rows",    "N/A"))),
+            ("Duplicates Removed:",    str(trust_report.get("rows_removed",  0))),
+            ("Issues Found:",          str(len(trust_report.get("issues_found", [])))),
+        ], S))
         if trust_report.get("issues_found"):
-            pdf.body_text(
-                "Issues found:\n" +
-                "\n".join(f"- {i}" for i in trust_report["issues_found"])
-            )
+            items = [ListItem(Paragraph(_sanitize(x), S["body"]), leftIndent=20)
+                     for x in trust_report["issues_found"]]
+            story.append(Paragraph("Issues found:", S["kpi_label"]))
+            story.append(ListFlowable(items, bulletType="bullet", leftIndent=10))
         if trust_report.get("imputation_log"):
-            pdf.body_text(
-                "Imputation decisions:\n" +
-                "\n".join(f"- {i}" for i in trust_report["imputation_log"])
-            )
-    pdf.ln(3)
+            items = [ListItem(Paragraph(_sanitize(x), S["body"]), leftIndent=20)
+                     for x in trust_report["imputation_log"]]
+            story.append(Paragraph("Imputation decisions:", S["kpi_label"]))
+            story.append(ListFlowable(items, bulletType="bullet", leftIndent=10))
+    story.append(Spacer(1, 8))
 
-    # ── Proactive Alerts ───────────────────────────────────────────────
+    # ── 2. Intelligence Alerts ─────────────────────────────────────────
     if alerts:
-        pdf.section_title("2. PROACTIVE INTELLIGENCE ALERTS")
+        story.append(_section_block("2. PROACTIVE INTELLIGENCE ALERTS", S))
+        story.append(Spacer(1, 4))
         for alert in alerts:
-            level = alert.get("level", "info").upper()
-            color = (200, 50, 50) if level == "CRITICAL" else (180, 100, 20)
-            pdf.set_font("DejaVu", "B", 10)
-            pdf.set_text_color(*color)
-            # Strip emoji from icon — fpdf2 may still choke on some emoji
-            icon = re.sub(r'[^\x00-\x7F]', '', alert.get("icon", ""))
-            title = _sanitize(alert.get("title", ""))
-            pdf.cell(0, 7, f"{icon} [{level}] {title}",
-                     new_x="LMARGIN", new_y="NEXT")
-            pdf.set_font("DejaVu", "", 10)
-            pdf.set_text_color(50, 50, 50)
-            pdf.multi_cell(0, 6, _sanitize(alert.get("message", "")))
-            pdf.ln(2)
-    pdf.ln(3)
+            level   = alert.get("level", "info").upper()
+            a_style = S["alert_crit"] if level == "CRITICAL" else S["alert_warn"]
+            title   = _sanitize(alert.get("title", ""))
+            msg     = _sanitize(alert.get("message", ""))
+            story.append(KeepTogether([
+                Paragraph(f"[{level}] {title}", a_style),
+                Paragraph(msg, S["alert_body"]),
+            ]))
+        story.append(Spacer(1, 8))
 
-    # ── Executive Brief ────────────────────────────────────────────────
-    pdf.section_title("3. AI-GENERATED EXECUTIVE BRIEF")
-    if executive_brief:
-        pdf.body_text(executive_brief)
-    else:
-        pdf.body_text(
-            "Generate the Executive Brief from the app to include it here."
-        )
-    pdf.ln(3)
+    # ── 3. Executive Brief ─────────────────────────────────────────────
+    story.append(_section_block("3. AI-GENERATED EXECUTIVE BRIEF", S))
+    story.append(Spacer(1, 4))
+    brief_text = executive_brief or \
+        "Generate the Executive Brief from the app to include it here."
+    story.extend(_brief_to_story(brief_text, S))
+    story.append(Spacer(1, 8))
 
-    # ── Analytics Summary ──────────────────────────────────────────────
-    pdf.section_title("4. KEY ANALYTICS FINDINGS")
+    # ── 4. Analytics Summary ───────────────────────────────────────────
+    story.append(_section_block("4. KEY ANALYTICS FINDINGS", S))
+    story.append(Spacer(1, 4))
     if analytics_summary:
-        pdf.body_text(analytics_summary)
-    pdf.ln(3)
+        story.append(Paragraph(_sanitize(analytics_summary), S["body"]))
+    story.append(Spacer(1, 8))
 
-    # ── Footer note ────────────────────────────────────────────────────
-    pdf.set_font("DejaVu", "I", 9)
-    pdf.set_text_color(120, 120, 120)
-    pdf.multi_cell(0, 5, _sanitize(
+    # ── Disclaimer ─────────────────────────────────────────────────────
+    story.append(HRFlowable(
+        width="100%", thickness=0.5, color=_GREY_LIGHT, spaceAfter=4))
+    story.append(Paragraph(_sanitize(
         "This report was generated by NEXUS Retail, an AI-powered retail "
         "intelligence system. All insights are derived from the uploaded dataset. "
         "Recommendations should be reviewed by qualified business analysts "
-        "before implementation."
-    ))
+        "before implementation."), S["footer_note"]))
 
-    return bytes(pdf.output())
+    doc.build(story, onFirstPage=_on_page, onLaterPages=_on_page)
+    return buf.getvalue()

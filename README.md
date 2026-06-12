@@ -1,75 +1,106 @@
-# NEXUS Retail — Revenue Intelligence Operating System
-### Version 2.0 | Case Study A: Nigerian Retail Sales & Customer Revenue Intelligence
+# 🛒 NEXUS Retail — Revenue Intelligence OS
+
+**AI-powered revenue, risk, and customer intelligence platform for Nigerian retail businesses.**
+
+NEXUS Retail ingests raw retail sales data (CSV/Excel), cleans and validates it, scores every order for revenue risk and every customer for vitality, and surfaces actionable, AI-generated insights — all through a single, themeable Streamlit dashboard.
+
+🔗 **Live App:** [nexus-retail-oaregrfzrkfw5wrgy9hq8c.streamlit.app](https://nexus-retail-oaregrfzrkfw5wrgy9hq8c.streamlit.app/)
+📦 **Repository:** [github.com/Kkhaymie/nexus-retail](https://github.com/Kkhaymie/nexus-retail)
 
 ---
 
-> **North Star:**
-> *"This retail business generated ₦68.5M in revenue across 1,506 orders — but 174 orders are
-> losing money, 7.4% of products are being returned, and your highest-value customers are drifting
-> toward churn undetected. NEXUS Retail scores every order for risk, scores every customer for
-> health, predicts what happens next month, and emails your stakeholders every Monday morning
-> before they've had their coffee."*
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Configuration](#configuration)
+- [Pages & Modules](#pages--modules)
+- [Design System](#design-system)
+- [Known Issues & Roadmap](#known-issues--roadmap)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
-## What Is NEXUS Retail?
+## Overview
 
-NEXUS Retail is a **dataset-agnostic**, AI-powered Retail Intelligence Operating System built
-in Streamlit. Unlike dashboards that show you what happened, NEXUS Retail:
+NEXUS Retail is a single-page-application-style Streamlit dashboard built for **Case Study A — Nigerian Retail Sales Analysis**. It transforms a raw transactional dataset into a full intelligence suite in seconds:
 
-- **Proactively alerts you** to revenue risks without you asking
-- **Engineers two new metrics** — Revenue Risk Index and Retail Vitality Index — that do not
-  exist in the raw data
-- **Predicts next month's revenue** using linear regression on your historical trend
-- **Answers questions in plain English** via Mistral AI
-- **Emails stakeholders automatically** every Monday at 8AM (Africa/Lagos timezone)
-- **Works on any retail dataset** — column detection is heuristic, not hardcoded
-
----
-
-## The 7 Layers
-
-| # | Layer | File | What It Does |
-|---|-------|------|-------------|
-| 1 | Ingest & Clean | `utils/cleaner.py` | Auto-cleans any retail CSV/Excel. Fixes casing, duplicates, missing values, label variants. Returns a Data Trust Report. |
-| 2 | Revenue Risk Index | `utils/intelligence.py` | Scores every **order** 0–100 for financial risk. Segments: High Value, Stable, At Risk, Profit Drain. |
-| 2B | Retail Vitality Index | `utils/vitality.py` | Scores every **customer** 0–100 for health and churn risk. Segments: Champion, Loyal, Developing, Dormant. |
-| 3 | Command Center | `app.py` | Live dashboard: KPI tiles, proactive alerts, 5 predictive insights, 6 revenue charts. All fire automatically on upload. |
-| 4 | Conversational Analyst | `utils/analyst.py` | Ask any revenue question in plain English. Mistral AI answers using your live dataset as context. |
-| 5 | Export Engine | `utils/report.py` | Downloadable PDF report + cleaned CSV + cleaned Excel. |
-| 6 | Email Intelligence | `utils/scheduler.py` | Monday 8AM automated HTML briefing to stakeholders. Instant anomaly alerts when thresholds are breached. |
+1. **Upload** any retail CSV or Excel file — any column naming convention.
+2. **Auto-clean** the dataset, resolving duplicates, inconsistent labels, and missing values, and producing a transparent Data Trust Score.
+3. **Score every order** with the proprietary **Revenue Risk Index (RRI)** across five signals (returns, discounts, profit, delivery delay, ratings).
+4. **Score every customer** with the **Retail Vitality Index (RVI)**, segmenting the customer base into Champion, Loyal, Developing, and Dormant tiers.
+5. **Ask questions in plain English** and get answers grounded in your live data via Mistral AI.
+6. **Generate a structured Executive Brief** (5 sections, AI-written, auto-dated).
+7. **Export** a polished PDF report, plus the cleaned dataset as CSV/Excel.
+8. **Schedule weekly email briefings** and instant anomaly alerts.
 
 ---
 
-## The Two Derived Metrics
+## Features
 
-### Revenue Risk Index (RRI) — per order, 0–100
+| Capability | Description |
+|---|---|
+| 🔍 **AI Data Cleaning** | Detects and resolves duplicates, label inconsistencies, and missing values. Outputs a 0–100 Data Trust Score with a full imputation log. |
+| 🎯 **Revenue Risk Index (RRI)** | Every order scored 0–100 across five risk signals. Orders are bucketed into `High Value → Stable → At Risk → Profit Drain`. |
+| 🧬 **Retail Vitality Index (RVI)** | Every customer scored 0–100 for health/engagement. Segments: `Champion → Loyal → Developing → Dormant`. |
+| 🔮 **Predictive Intelligence** | Auto-computed on upload: revenue forecast (linear regression), churn risk, champion share, repeat-revenue share, and best-margin channel. |
+| 🧮 **Global Filters & Slicers** | Sidebar-wide filters for date range (timeline slider), sales channel, customer segment, region, product category, and risk tier — applied across all pages with an active-filter indicator bar. |
+| 💬 **Conversational AI Analyst** | Ask free-form revenue questions; Mistral AI answers using your live, filtered dataset as context. Suggested-question quick-fill. |
+| 📋 **Executive Brief Generator** | 5-section AI-written brief (Executive Summary, In-Depth Insights, Conclusion, Recommendations, Next Steps & Action Plan), auto-dated, markdown-cleaned, and downloadable. |
+| 📧 **Email Intelligence** | Scheduled Monday 8 AM (Africa/Lagos) stakeholder briefings via APScheduler, plus instant anomaly alerts (high return rate, low category margin, excessive Profit Drain share). |
+| 📥 **Export Report** | One-click PDF report (via ReportLab) bundling the Data Trust Report, alerts, and Executive Brief sections, plus cleaned CSV/Excel downloads. |
+| 🌑☀️ **Dark / Light Theming** | Full token-based theme system with a cohesive purple/teal palette, applied consistently across charts, cards, sidebar, and widgets. |
 
-Higher score = higher financial risk to the business.
+---
 
-| Signal | Weight | Logic |
-|--------|--------|-------|
-| Order returned (full) | 35 pts | Direct revenue loss |
-| Discount level | 25 pts | Scaled: 0% → 0 pts, 20%+ → 25 pts |
-| Negative profit | 20 pts | Order cost exceeds revenue |
-| Late delivery | 12 pts | Delivery status = "Late" |
-| Low customer rating (≤ 2) | 8 pts | Satisfaction signal |
+## Architecture
 
-**This metric does not exist in the raw data. It was engineered for this system.**
+```
+                 ┌─────────────────────────┐
+                 │   Streamlit Frontend     │
+                 │        app.py            │
+                 └────────────┬────────────┘
+                              │
+        ┌──────────────┬─────┴──────┬───────────────┬────────────────┐
+        ▼              ▼            ▼               ▼                ▼
+ utils/cleaner   utils/intelligence  utils/vitality  utils/analyst   utils/report
+ (data cleaning) (RRI scoring,       (RVI scoring,   (Mistral AI     (PDF generation
+                  alerts, summaries)  segments)       via httpx)       via ReportLab)
+        │                                                 │
+        └──────────────────────┬──────────────────────────┘
+                                 ▼
+                        utils/scheduler
+                (APScheduler + email delivery,
+                   anomaly detection, .env config)
+```
 
-### Retail Vitality Index (RVI) — per customer, 0–100
+**Data flow:**
 
-Higher score = healthier, more valuable customer relationship.
+1. User uploads a file → `load_dataset()` parses it (CSV/XLSX/XLS).
+2. `clean_dataset()` returns a cleaned DataFrame + a trust report (issues found, imputation log, trust score).
+3. `detect_columns()` builds a `col_map` — a flexible mapping from internal field names (e.g. `net_revenue`, `channel`, `order_date`) to the actual column names in the uploaded file, so the app works with **any** naming convention.
+4. `compute_revenue_risk_index()` adds `RRI_Score` and `Risk_Tier` columns to every order.
+5. `compute_retail_vitality_index()` builds a per-customer DataFrame with `RVI_Score` and `Vitality_Tier`.
+6. All seven pages read from this shared, filtered state.
 
-| Signal | Weight | Logic |
-|--------|--------|-------|
-| Repeat purchase behaviour | 30 pts | `Repeat_Customer_Flag = Yes` or order count > 1 |
-| AOV vs segment median | 25 pts | Customer AOV ÷ segment median, capped at 2× |
-| Customer tenure | 20 pts | Tenure months ÷ max tenure |
-| Return rate (this customer) | 15 pts | 0% returns = 15 pts; 100% returns = 0 pts |
-| Acquisition source quality | 10 pts | Referral/Google = 10; WhatsApp/Direct = 8; Social/Email = 6; Paid = 4 |
+---
 
-**This metric does not exist in the raw data. It was engineered for this system.**
+## Tech Stack
+
+- **Frontend / App framework:** [Streamlit](https://streamlit.io/)
+- **Data processing:** pandas, NumPy
+- **Visualization:** Plotly Express & Graph Objects
+- **Machine Learning:** scikit-learn (`LinearRegression` for revenue forecasting)
+- **AI / LLM:** Mistral AI — called via raw `httpx` REST requests (no `mistralai` SDK dependency)
+- **PDF Generation:** ReportLab
+- **Scheduling & Email:** APScheduler + `smtplib`
+- **Environment management:** `python-dotenv`
+- **Language/runtime:** Python 3.14
 
 ---
 
@@ -77,256 +108,186 @@ Higher score = healthier, more valuable customer relationship.
 
 ```
 nexus_retail/
-├── app.py                  ← Main Streamlit app (7 pages)
-├── utils/
-│   ├── __init__.py         ← Empty package marker
-│   ├── cleaner.py          ← Layer 1: Data cleaning engine
-│   ├── intelligence.py     ← Layer 2: RRI + order analytics
-│   ├── vitality.py         ← Layer 2B: RVI customer health scores
-│   ├── analyst.py          ← Layer 4: Mistral conversational AI
-│   ├── report.py           ← Layer 5: PDF + Excel export
-│   └── scheduler.py        ← Layer 6: Email intelligence engine
-├── requirements.txt
-├── .env                    ← API keys and email config (never commit this)
-├── .gitignore
-└── README.md
+├── app.py                  # Main Streamlit application (multi-page dashboard)
+├── .env                     # Environment variables (NOT committed — see Configuration)
+├── requirements.txt         # Python dependencies
+└── utils/
+    ├── cleaner.py            # Data loading, cleaning, trust scoring, Excel export
+    ├── intelligence.py        # Column detection, RRI scoring, revenue summaries,
+    │                           #   alerts, risk-tier and discount-impact analytics
+    ├── vitality.py            # RVI scoring, vitality tiers, champion/dormant logic
+    ├── analyst.py             # Mistral AI integration: ask_analyst(),
+    │                           #   generate_executive_brief()
+    ├── report.py              # ReportLab-based PDF report generation
+    └── scheduler.py            # APScheduler setup, email sending, anomaly
+                                #   detection, get_email_config()
 ```
 
 ---
 
-## Setup
+## Getting Started
 
-### 1. Navigate to your project folder
+### Prerequisites
 
-```powershell
-cd C:\Users\HP\Downloads\nexus_retail
-```
+- Python 3.10+ (developed and tested on Python 3.14)
+- A free [Mistral AI](https://console.mistral.ai) API key (for AI Analyst & Executive Brief features)
+- (Optional) A Gmail account with an **App Password** for Email Intelligence
 
-### 2. Activate virtual environment
+### Installation
 
-```powershell
+```bash
+# 1. Clone the repository
+git clone https://github.com/Kkhaymie/nexus-retail.git
+cd nexus-retail
+
+# 2. Create and activate a virtual environment
+python -m venv venv
+
 # Windows
 venv\Scripts\activate
 
-# Mac/Linux
+# macOS / Linux
 source venv/bin/activate
-```
 
-Your prompt should show `(venv)` at the start.
-
-### 3. Install all dependencies
-
-```powershell
+# 3. Install dependencies
 pip install -r requirements.txt
 ```
 
-If `apscheduler` or `scikit-learn` are missing, install them separately:
+### Running the App
 
-```powershell
-pip install apscheduler scikit-learn
-```
+```bash
+# Windows (matches deployed dev environment)
+C:\Users\HP\Downloads\nexus_retail\nexus_retail\venv\Scripts\python.exe -m streamlit run app.py
 
-### 4. Configure your `.env` file
-
-Open `.env` in VS Code or Notepad and fill in:
-
-```
-MISTRAL_API_KEY=your_mistral_key_here
-
-EMAIL_SENDER=your_email@gmail.com
-EMAIL_PASSWORD=your_16_char_gmail_app_password
-EMAIL_RECIPIENTS=recipient1@email.com,recipient2@email.com
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-APP_URL=http://localhost:8501
-```
-
-**Getting your Mistral API key:** https://console.mistral.ai
-
-**Getting a Gmail App Password (required — your main password will not work):**
-1. Go to https://myaccount.google.com
-2. Security → 2-Step Verification (must be ON)
-3. Search "App passwords" → Create new → Name it "NEXUS Retail"
-4. Copy the 16-character code → paste as `EMAIL_PASSWORD`
-
-**Note:** Email variables are optional. If left blank, the app runs fully — the Email Intelligence
-page will show ❌ configuration status but no crashes will occur.
-
-### 5. Run the app
-
-```powershell
+# macOS / Linux / generic
 streamlit run app.py
 ```
 
-Your app opens at: **http://localhost:8501**
+The app will open at `http://localhost:8501`.
+
+### First Run
+
+1. Open the **🔑 API Key** panel in the sidebar and paste your Mistral API key (or set `MISTRAL_API_KEY` in `.env` — see below).
+2. Upload your retail dataset (`.csv`, `.xlsx`, or `.xls`) via the **Dataset** uploader.
+3. Click **🚀 Run Full Analysis**.
+4. Use the **Navigation** menu to explore Command Center, Customer Vitality, Deep Analysis, Ask NEXUS Retail, Executive Brief, Email Intelligence, and Export Report.
+5. Use **🧮 Filters & Slicers** in the sidebar to drill into specific date ranges, channels, segments, regions, product categories, or risk tiers — filters apply globally across all pages.
 
 ---
 
-## Usage
+## Configuration
 
-1. Upload any retail dataset (CSV or Excel) using the sidebar
-2. Click **🚀 Run Full Analysis**
-3. Navigate through the 7 pages:
+NEXUS Retail is configured via a `.env` file in the project root (never committed to version control).
 
-| Page | What to do |
-|------|-----------|
-| 🏠 Command Center | KPIs, alerts, 5 predictive insights, and 6 revenue charts appear automatically |
-| 🧬 Customer Vitality | Browse Champion and Dormant customers; see RVI by segment |
-| 🔬 Deep Analysis | Drill into revenue by any dimension; view top 20 risk orders |
-| 💬 Ask NEXUS Retail | Type any revenue question; get a Mistral AI answer |
-| 📋 Executive Brief | Generate the AI one-page brief for stakeholders |
-| 📧 Email Intelligence | Verify email config; send a test brief; view anomaly alert logic |
-| 📥 Export Report | Download PDF report, cleaned CSV, and cleaned Excel |
+```ini
+# ── Mistral AI ──────────────────────────────────────────────
+MISTRAL_API_KEY=your_mistral_api_key_here
 
----
+# ── Email Intelligence (Gmail recommended) ─────────────────
+EMAIL_SENDER=your_email@gmail.com
+EMAIL_PASSWORD=your_16_char_gmail_app_password
+EMAIL_RECIPIENTS=ceo@company.com,ops@company.com,analyst@company.com
 
-## Dataset Compatibility
-
-NEXUS Retail uses heuristic column detection. It works on any retail dataset containing
-order-level records, regardless of column names. Detection patterns include:
-
-- Any column with `order_id`, `order id` → order identifier
-- Any column with `net_revenue`, `revenue`, `net` → revenue signal
-- Any column with `return_status`, `return` → return signal
-- Any column with `customer_id`, `cust_id` → customer grouping
-- Any column with `product_category`, `category` → category grouping
-- Any column with `sales_channel`, `channel` → channel grouping
-- Any column with `customer_segment`, `segment` → segment grouping
-- And so on for all 24 detected concepts
-
----
-
-## The 5 Predictive Intelligence Insights (Command Center)
-
-These five tiles compute automatically after upload — no button clicks:
-
-1. **Revenue Forecast** — Linear regression on monthly trend, projects next month's revenue
-2. **Churn Risk** — Count of Dormant-tier customers as a % of total customer base
-3. **Champion Customers** — Count of top-tier customers and their % of the base
-4. **Repeat Revenue Share** — % of total net revenue coming from repeat customers
-5. **Best Margin Channel** — The sales channel with the highest profit margin %
-
----
-
-## Automated Email Intelligence
-
-### Monday 8AM Briefing
-Every Monday at 8AM (Africa/Lagos timezone), NEXUS Retail sends a formatted HTML email
-to all configured recipients. The email includes:
-- Full KPI summary table (revenue, profit, margin, return rate, RVI)
-- Up to 3 intelligence alerts (colour-coded by severity)
-- AI-generated brief excerpt (first 300 characters of the Executive Brief)
-- One priority recommended action
-- Direct link to the live app
-
-### Instant Anomaly Alerts
-Three conditions trigger an immediate email regardless of day or time:
-1. Return rate exceeds **10%** (absolute threshold)
-2. Return rate increases by more than **2 percentage points** week-over-week
-3. Any product category margin drops below **5%**
-4. Profit Drain orders exceed **15%** of all orders
-
-### Deployment Note
-APScheduler runs as a background thread within the Streamlit process.
-On Streamlit Community Cloud, apps go to sleep after ~20 minutes of inactivity,
-which stops the scheduler. Solutions:
-- Use [UptimeRobot](https://uptimerobot.com) (free) to ping your app URL every 10 minutes
-- Use the **"Send Intelligence Email Now"** button on the Email Intelligence page for
-  controlled delivery during the hackathon demo
-
----
-
-## Deployment (Live URL for Judges)
-
-```bash
-git init
-git add .
-git commit -m "NEXUS Retail v2.0: Revenue Intelligence Operating System"
-git remote add origin https://github.com/YOUR_USERNAME/nexus-retail.git
-git push -u origin main
+# ── Optional: alternate SMTP provider ──────────────────────
+# SMTP_HOST=smtp.office365.com
+# SMTP_PORT=587
 ```
 
-**Critical:** Ensure `.env` is in `.gitignore` — never push your API key.
+> ⚠️ **Gmail App Passwords:** Standard Gmail login passwords will not work for SMTP. Generate an App Password under **Google Account → Security → App Passwords**, and use that 16-character value for `EMAIL_PASSWORD`.
 
-Then:
-1. Go to **share.streamlit.io**
-2. Sign in with GitHub → click "New app"
-3. Select your `nexus-retail` repo → main file: `app.py`
-4. Click **Advanced → Secrets** → add all variables from your `.env`
-5. Click **Deploy**
+### Deploying to Streamlit Community Cloud
 
-Your live URL: `https://nexus-retail-yourusername.streamlit.app`
+When deploying, add the same variables under **App Settings → Secrets** in TOML format:
 
----
-
-## Troubleshooting
-
-| Error | Fix |
-|-------|-----|
-| `ModuleNotFoundError: mistralai` | Run `pip install -r requirements.txt` with venv active |
-| `ModuleNotFoundError: apscheduler` | Run `pip install apscheduler` with venv active |
-| `ModuleNotFoundError: sklearn` | Run `pip install scikit-learn` with venv active |
-| `MISTRAL_API_KEY not found` | Check `.env` exists in same folder as `app.py`; format: `MISTRAL_API_KEY=sk-...` (no quotes, no spaces around `=`) |
-| `SMTP Authentication Error` | Use Gmail **App Password**, not your main Gmail password |
-| Email sends but arrives in spam | Add your sender address to recipients' contacts |
-| `RVI returns None` | Dataset must have a `customer_id` column — check col_map output in terminal |
-| Vitality page shows "RVI not computed" | Click "Run Full Analysis" again after upload |
-| Streamlit Cloud deploy fails | Check `requirements.txt` is in root folder; check all Secrets are set |
-| Charts not rendering on some pages | Verify `plotly` is installed: `pip show plotly` |
-| Pylance shows red import warnings in VS Code | Press `Ctrl+Shift+P` → "Python: Select Interpreter" → choose the `venv` interpreter |
+```toml
+MISTRAL_API_KEY = "your_mistral_api_key_here"
+EMAIL_SENDER = "your_email@gmail.com"
+EMAIL_PASSWORD = "your_16_char_gmail_app_password"
+EMAIL_RECIPIENTS = "ceo@company.com,ops@company.com"
+```
 
 ---
 
-## Tech Stack
+## Pages & Modules
 
-| Purpose | Tool |
-|---------|------|
-| Frontend/App | Streamlit |
-| AI/LLM | Mistral AI (mistral-large-latest) |
-| Predictive Model | scikit-learn LinearRegression |
-| Visualisation | Plotly |
-| PDF generation | fpdf2 |
-| Excel export | openpyxl |
-| Email scheduling | APScheduler |
-| Data processing | pandas, numpy |
-| Environment | Python 3.10+, virtualenv |
+### 🏠 Command Center
+The default landing page after analysis. Displays six headline KPI cards (Total Orders, Net Revenue, Profit Margin, Return Rate, Avg Risk Score, Data Trust Score), auto-generated intelligence alerts, five predictive insight tiles (revenue forecast, churn risk, champions, repeat revenue share, best-margin channel), and six core revenue analytics charts.
 
----
+### 🧬 Customer Vitality
+Surfaces the Retail Vitality Index across the customer base: tier-distribution KPI cards (Champion/Loyal/Developing/Dormant), average RVI by segment, top champion customers, highest-churn-risk dormant customers, and tier-specific intervention playbooks.
 
-## Presentation Narrative
+### 🔬 Deep Analysis
+Cross-dimensional drill-down by sales channel, product category, customer segment, region, city, acquisition source, or payment method. Includes discount-impact-on-profit analysis, a ranked table of the top 20 highest-risk orders (color-coded by risk tier), risk-tier intervention playbooks, and the full Data Trust Report.
 
-**Slide 1 — The Hook:**
-*"Every Monday morning, the operations team opens a spreadsheet with 1,506 rows and asks:
-'Are we making money?' After two hours, they still don't know. NEXUS Retail answers that in
-4 seconds — and sends the answer to their inbox before they even open the laptop."*
+### 💬 Ask NEXUS Retail
+A conversational interface to Mistral AI, grounded in the current (filtered) dataset and analytics summary. Includes six suggested-question quick-fill buttons, persistent chat history, and AI responses rendered with clean markdown-to-HTML formatting (headings, bold, numbered/bulleted lists).
 
-**Slide 2 — The Problem (with numbers):**
-₦68.5M net revenue. ₦13.5M profit. 19.6% margin. But 174 orders are generating negative
-profit. 7.4% return rate. Q4 is 30.6% of annual revenue and nobody is watching.
+### 📋 Executive Brief
+On demand, generates a structured, professional brief with five sections — Executive Summary, In-Depth Insights, Conclusion, Recommendations, and Next Steps & Action Plan — using live KPI and alert data. The brief is automatically dated to the current date, stripped of stray markdown artifacts, rendered as styled report cards, and downloadable as plain text.
 
-**Slide 3 — The Two Derived Metrics:**
-*"RRI tells you which orders are destroying profit right now. RVI tells you which customers
-are about to walk away next month. Neither metric exists in the raw data. I engineered both.
-Together they give you the complete picture: past performance and future risk — from a single
-uploaded file."*
+### 📧 Email Intelligence
+Displays the current email configuration status (sender, app password, recipients) sourced from `.env`. Supports sending an on-demand test briefing and documents the automatic schedule: weekly Monday 8 AM (Africa/Lagos) briefings plus instant anomaly alerts (return rate > 10%, any category margin < 5%, or Profit Drain orders > 15% of total).
 
-**Slide 4 — Live Demo:**
-Upload the dataset → show alerts firing → drill into Customer Vitality → ask one question
-via the Analyst → generate Executive Brief → show email configuration.
-
-**Slide 5 — The Automated Layer:**
-*"Every other submission waits for a manager to log in and check a dashboard on Monday
-morning. NEXUS Retail does not wait. At 8AM every Monday, it emails every stakeholder a
-formatted intelligence brief — KPIs, alerts, AI insights, and one recommended action —
-before their first meeting starts. If an anomaly is detected mid-week, the email fires
-immediately. The system is always watching."*
-
-**Closing:**
-*"Every other solution here shows you a chart of what happened last month. NEXUS Retail
-tells you what is happening right now, which orders are destroying profit, which customers
-are about to churn, and what to do before the next order comes in."*
+### 📥 Export Report
+Generates a full PDF intelligence report (Data Trust Report, alerts, Executive Brief sections) via ReportLab, with the download button persisted in session state so it remains available after generation. Also provides one-click downloads of the cleaned dataset as CSV or Excel.
 
 ---
 
-*Built for 10Alytics Hack-AI-Thon 2.0 | Case A: Retail Sales & Customer Revenue Intelligence*
-*#10ABHackAIThon*
+## Design System
+
+NEXUS Retail uses a consistent, token-driven design system across both Dark and Light themes.
+
+| Token | Dark | Light | Usage |
+|---|---|---|---|
+| Primary | `#7C3AED` | `#7C3AED` | Buttons, accents, gradients |
+| Primary Soft | `#A78BFA` | `#7C3AED` | Secondary text, badges, chart accents |
+| Surface | `#1E1B4B` | `#FFFFFF` | Cards, sidebar |
+| Surface 2 | `#2D2A5E` | `#EDE9FE` | Secondary surfaces |
+| Background | `#0F172A` | `#F1F5F9` | App background |
+| Text | `#F1F5F9` | `#0F172A` | Primary text |
+| Text Secondary | `#A78BFA` | `#334155` | Labels, captions |
+| Teal | `#0F766E` | `#0F766E` | Secondary accent (vitality, repeat revenue) |
+| Danger | `#F43F5E` | `#E11D48` | Risk alerts, dormant tier |
+| Warning | `#F59E0B` | `#D97706` | Caution states |
+| Success | `#10B981` | `#059669` | Healthy/positive states |
+
+**Typography:** [Space Grotesk](https://fonts.google.com/specimen/Space+Grotesk) for headings and KPI values, [Inter](https://fonts.google.com/specimen/Inter) for body text.
+
+**Components:** KPI cards with gradient top-borders, pill badges, alert cards with severity-coded left borders, feature cards, chat bubbles, and report cards — all theme-aware via CSS variables injected at runtime based on the active theme.
+
+---
+
+## Known Issues & Roadmap
+
+The following items are tracked as open issues from the most recent development cycle:
+
+- [ ] **Executive Brief completeness** — Despite prompt-engineering fixes (explicit section markers, markdown stripping, `max_tokens=2500`, auto-dating), the AI-generated brief can occasionally truncate or omit a section under certain data conditions. Further investigation into response length handling and retry/continuation logic is planned.
+- [ ] **Email Intelligence UI** — The in-app sender/recipient configuration tabs were not rendering reliably; the project has reverted to a `.env`-driven configuration as the stable interim approach. A future iteration may reintroduce an in-app form with improved state handling.
+
+**Planned enhancements:**
+
+- Retry/continuation logic for long AI-generated content (Executive Brief)
+- Optional in-app email configuration with validation
+- Additional predictive signals (e.g., customer lifetime value forecasting)
+- Multi-dataset comparison mode
+
+---
+
+## Contributing
+
+1. Fork the repository and create a feature branch (`git checkout -b feature/your-feature`).
+2. Make your changes, following the existing code style (theme tokens via `T[...]`, helper functions for repeated UI patterns).
+3. Test locally with `streamlit run app.py` against a sample dataset.
+4. Submit a pull request with a clear description of the change and any new configuration requirements.
+
+---
+
+## License
+
+This project is part of **Case Study A** for Nigerian retail revenue intelligence. License terms to be determined by the repository owner — see [GitHub repository](https://github.com/Kkhaymie/nexus-retail) for the most current licensing information.
+
+---
+
+<p align="center">
+  <sub>NEXUS Retail v2.0 · Powered by Mistral AI · RRI · RVI · Email Intelligence</sub>
+</p>

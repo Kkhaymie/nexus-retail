@@ -1082,7 +1082,7 @@ elif page == "🔬 Deep Analysis":
                     st.markdown(f"- {lg}")
 
 # ════════════════════════════════════════════════════════════════════════════
-# PAGE 4 — CONVERSATIONAL ANALYST
+# PAGE 4 — CONVERSATIONAL ANALYST  (full drop-in replacement)
 # ════════════════════════════════════════════════════════════════════════════
 elif page == "💬 Ask NEXUS Retail":
     page_header("AI Intelligence","Ask NEXUS Retail",
@@ -1091,6 +1091,58 @@ elif page == "💬 Ask NEXUS Retail":
     if not st.session_state.mistral_api_key:
         st.warning("Add your Mistral API key in the sidebar to use the AI Analyst.", icon="🔑")
         st.stop()
+
+    # ── helper: convert AI markdown to clean chat HTML ────────────────
+    def _render_ai(text: str) -> str:
+        import re as _re
+
+        # 1. Convert **bold** → <strong>
+        text = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+        # 2. Convert *italic* → <em>  (single asterisk)
+        text = _re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
+        # 3. Convert ### Heading / ## Heading / # Heading → styled span
+        def _heading(m):
+            level = len(m.group(1))          # number of # signs
+            size  = {1:"1.05rem", 2:"0.98rem", 3:"0.92rem"}.get(level, "0.92rem")
+            return (
+                f'<div style="font-family:\'Space Grotesk\',sans-serif;'
+                f'font-weight:700;font-size:{size};color:{T["primary_soft"]};'
+                f'margin:14px 0 5px;">{m.group(2).strip()}</div>'
+            )
+        text = _re.sub(r'^(#{1,3})\s+(.+)$', _heading, text, flags=_re.MULTILINE)
+        # 4. Numbered list items  "1. text"
+        text = _re.sub(
+            r'(?m)^\d+\.\s+(.+)$',
+            lambda m: (
+                f'<div style="display:flex;gap:8px;margin:5px 0 5px 12px;">'
+                f'<span style="color:{T["primary_soft"]};font-weight:700;flex-shrink:0;">•</span>'
+                f'<span>{m.group(1)}</span></div>'
+            ),
+            text,
+        )
+        # 5. Bullet list items  "- text" or "• text"
+        text = _re.sub(
+            r'(?m)^[-•]\s+(.+)$',
+            lambda m: (
+                f'<div style="display:flex;gap:8px;margin:5px 0 5px 12px;">'
+                f'<span style="color:{T["primary_soft"]};font-weight:700;flex-shrink:0;">•</span>'
+                f'<span>{m.group(1)}</span></div>'
+            ),
+            text,
+        )
+        # 6. Wrap remaining plain-text lines in <p>
+        lines_out = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                lines_out.append('<div style="height:5px;"></div>')
+            elif stripped.startswith("<"):
+                lines_out.append(stripped)   # already HTML
+            else:
+                lines_out.append(
+                    f'<p style="margin:0 0 8px 0;line-height:1.75;">{stripped}</p>'
+                )
+        return "\n".join(lines_out)
 
     suggestions = [
         "Which channel should I invest in most?",
@@ -1102,26 +1154,46 @@ elif page == "💬 Ask NEXUS Retail":
     ]
     section_lbl("SUGGESTED QUESTIONS")
     sc = st.columns(3)
-    for i,s in enumerate(suggestions):
-        with sc[i%3]:
-            if st.button(s,key=f"sug_{i}",use_container_width=True):
-                st.session_state["analyst_input"] = s
+    for i, s in enumerate(suggestions):
+        with sc[i % 3]:
+            if st.button(s, key=f"sug_{i}", use_container_width=True):
+                st.session_state["analyst_prefill"] = s
                 st.rerun()
 
     divider()
+
+    # ── Chat history ──────────────────────────────────────────────────
     for msg in st.session_state.chat_history:
-        cls = "chat-user" if msg["role"]=="user" else "chat-ai"
-        lbl = "👤 You" if msg["role"]=="user" else "🛒 NEXUS Retail"
-        st.markdown(f'<div class="{cls}"><strong>{lbl}</strong><br>{msg["content"]}</div>',
-                    unsafe_allow_html=True)
+        if msg["role"] == "user":
+            st.markdown(
+                f'<div class="chat-user"><strong>👤 You</strong><br>{msg["content"]}</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<div class="chat-ai"><strong>🛒 NEXUS Retail</strong><br>'
+                f'{_render_ai(msg["content"])}</div>',
+                unsafe_allow_html=True,
+            )
 
-    q = st.text_input("Ask anything about your revenue data:",
-                      placeholder="e.g. Which channel should I scale first?",
-                      key="analyst_input", label_visibility="collapsed")
+    # ── Input — prefill via default value, cleared after use ──────────
+    _prefill = st.session_state.get("analyst_prefill", "")
 
-    bc1,bc2 = st.columns([1,6])
+    q = st.text_input(
+        "Ask anything about your revenue data:",
+        value=_prefill,
+        placeholder="e.g. Which channel should I scale first?",
+        label_visibility="collapsed",
+        key="analyst_input",
+    )
+
+    # Clear prefill AFTER the widget has rendered (next interaction will be clean)
+    if _prefill:
+        del st.session_state["analyst_prefill"]
+
+    bc1, bc2 = st.columns([1, 6])
     with bc1:
-        send = st.button("Send →",type="primary")
+        send = st.button("Send →", type="primary")
     with bc2:
         if st.session_state.chat_history and st.button("Clear"):
             st.session_state.chat_history = []
@@ -1131,11 +1203,12 @@ elif page == "💬 Ask NEXUS Retail":
         os.environ["MISTRAL_API_KEY"] = st.session_state.mistral_api_key
         with st.spinner("Analysing…"):
             try:
-                ans,upd = ask_analyst(q,df,col_map,
+                ans, upd = ask_analyst(
+                    q, df, col_map,
                     analytics_summary=st.session_state.analytics_summary,
-                    chat_history=st.session_state.chat_history.copy())
+                    chat_history=st.session_state.chat_history.copy(),
+                )
                 st.session_state.chat_history = upd
-                st.session_state["analyst_input"] = ""
                 st.rerun()
             except Exception as e:
                 st.error(str(e))
@@ -1245,23 +1318,22 @@ STRICT RULES — you must follow all of these:
 </div>""", unsafe_allow_html=True)
 
         # ── HTML renderer for plain AI text ──────────────────────────────
+# ── Drop-in replacement for the _md_to_html function in app.py ────────────────
+# Fixes: all list items showing "1." | switches recommendations/next steps to <ul>
+
         def _md_to_html(text: str) -> str:
             """Convert plain/lightly-formatted AI output to safe display HTML."""
-            # Final safety pass — strip any residual markdown markers
-            text = re.sub(r'\*{1,3}(.*?)\*{1,3}', r'\1', text, flags=re.DOTALL)
-            text = re.sub(r'_{1,2}(.*?)_{1,2}', r'\1', text, flags=re.DOTALL)
+            import re as _re
+            text = _re.sub(r'\*{1,3}(.*?)\*{1,3}', r'\1', text, flags=_re.DOTALL)
+            text = _re.sub(r'_{1,2}(.*?)_{1,2}', r'\1', text, flags=_re.DOTALL)
             text = text.replace('`', '')
 
             lines = text.split("\n")
             html_parts = []
-            in_ol = False
             in_ul = False
 
             def close_lists():
-                nonlocal in_ol, in_ul
-                if in_ol:
-                    html_parts.append("</ol>")
-                    in_ol = False
+                nonlocal in_ul
                 if in_ul:
                     html_parts.append("</ul>")
                     in_ul = False
@@ -1269,54 +1341,45 @@ STRICT RULES — you must follow all of these:
             for raw_line in lines:
                 line = raw_line.strip()
 
-                # Blank lines → spacing
                 if not line:
                     close_lists()
                     html_parts.append('<div style="height:6px;"></div>')
                     continue
 
-                # Numbered list  "1. text" or "1) text"
-                m_num = re.match(r'^(\d+)[.)]\s+(.*)', line)
+                # Numbered list  "1. text" or "1) text"  → render as <ul> bullet
+                # (avoids the "all items show 1." bug from nested <ol> resets)
+                m_num = _re.match(r'^\d+[.)]\s+(.*)', line)
                 if m_num:
-                    if in_ul:
-                        html_parts.append("</ul>")
-                        in_ul = False
-                    if not in_ol:
-                        html_parts.append(
-                            '<ol style="padding-left:22px;margin:8px 0;color:inherit;">'
-                        )
-                        in_ol = True
-                    html_parts.append(
-                        f'<li style="margin-bottom:6px;line-height:1.7;">{m_num.group(2)}</li>'
-                    )
-                    continue
-
-                # Bullet list  "- text" or "• text" or "* text"
-                m_bul = re.match(r'^[-•*◦○]\s+(.*)', line)
-                if m_bul:
-                    if in_ol:
-                        html_parts.append("</ol>")
-                        in_ol = False
                     if not in_ul:
                         html_parts.append(
                             '<ul style="padding-left:22px;margin:8px 0;color:inherit;">'
                         )
                         in_ul = True
                     html_parts.append(
-                        f'<li style="margin-bottom:6px;line-height:1.7;">{m_bul.group(1)}</li>'
+                        f'<li style="margin-bottom:7px;line-height:1.7;">{m_num.group(1)}</li>'
                     )
                     continue
 
-                # Sub-heading detection: short line, no trailing period/comma,
-                # looks like a label (Title Case or ALL CAPS)
+                # Explicit bullet list  "- text" or "• text"
+                m_bul = _re.match(r'^[-•*◦○]\s+(.*)', line)
+                if m_bul:
+                    if not in_ul:
+                        html_parts.append(
+                            '<ul style="padding-left:22px;margin:8px 0;color:inherit;">'
+                        )
+                        in_ul = True
+                    html_parts.append(
+                        f'<li style="margin-bottom:7px;line-height:1.7;">{m_bul.group(1)}</li>'
+                    )
+                    continue
+
+                # Sub-heading detection (short line, Title Case / ALL CAPS, no trailing punct)
                 is_subheading = (
                     len(line) <= 90
-                    and not line.endswith(".")
-                    and not line.endswith(",")
-                    and not line.endswith(":")
+                    and not line.endswith((".", ",", ":"))
                     and (
-                        re.match(r'^[A-Z][^a-z]{3,}', line)  # ALL-CAPS
-                        or re.match(r'^(\d+\.\s+)?[A-Z][A-Za-z ,:\-&/()\d]+$', line)  # Title Case
+                        _re.match(r'^[A-Z][^a-z]{3,}', line)
+                        or _re.match(r'^(\d+\.\s+)?[A-Z][A-Za-z ,:\-&/()\d]+$', line)
                     )
                 )
                 if is_subheading:
@@ -1529,6 +1592,12 @@ elif page == "📥 Export Report":
     page_header("Export","Export Report",
                 "Download the full intelligence report, cleaned CSV, and cleaned Excel.")
 
+    # Persist PDF bytes across reruns so the download button stays visible
+    if "pdf_bytes" not in st.session_state:
+        st.session_state["pdf_bytes"] = None
+    if "pdf_filename" not in st.session_state:
+        st.session_state["pdf_filename"] = ""
+
     st.markdown(f"""
 <div class="report-card">
     <div style="font-weight:700;font-size:0.88rem;color:{T['text']};margin-bottom:10px;">
@@ -1542,7 +1611,7 @@ elif page == "📥 Export Report":
     </div>
 </div>""", unsafe_allow_html=True)
 
-    if st.button("Generate & Download PDF", type="primary"):
+    if st.button("Generate PDF", type="primary"):
         with st.spinner("Generating PDF…"):
             try:
                 alts = get_proactive_alerts(df, col_map)
@@ -1552,14 +1621,21 @@ elif page == "📥 Export Report":
                     analytics_summary=st.session_state.analytics_summary,
                     executive_brief=brf, trust_report=trust_report, alerts=alts,
                 )
-                st.download_button(
-                    "📥 Download PDF", data=pdf,
-                    file_name=f"NEXUS_Retail_{datetime.now().strftime('%Y%m%d')}.pdf",
-                    mime="application/pdf",
-                )
-                st.success("PDF ready.")
+                st.session_state["pdf_bytes"]    = pdf
+                st.session_state["pdf_filename"] = f"NEXUS_Retail_{datetime.now().strftime('%Y%m%d')}.pdf"
+                st.success("PDF ready — click Download below.")
             except Exception as e:
-                st.error(str(e))
+                st.error(f"PDF generation failed: {e}")
+
+    # Download button lives OUTSIDE the generate block so it persists after rerun
+    if st.session_state["pdf_bytes"]:
+        st.download_button(
+            label="📥 Download PDF",
+            data=st.session_state["pdf_bytes"],
+            file_name=st.session_state["pdf_filename"],
+            mime="application/pdf",
+            type="primary",
+        )
 
     divider()
     section_lbl("CLEANED DATASET")
