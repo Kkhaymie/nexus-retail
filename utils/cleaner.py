@@ -12,16 +12,17 @@ def load_dataset(uploaded_file):
     filename = uploaded_file.name.lower()
 
     if filename.endswith('.csv'):
-        df = pd.read_csv(uploaded_file)
-        return df
+        return pd.read_csv(uploaded_file)
 
     elif filename.endswith(('.xlsx', '.xls')):
-        xl = pd.ExcelFile(uploaded_file)
+        # pandas 3.x requires explicit engine — openpyxl for xlsx, xlrd for xls
+        engine = 'xlrd' if filename.endswith('.xls') else 'openpyxl'
+
+        xl = pd.ExcelFile(uploaded_file, engine=engine)
         dfs = {}
         for sheet in xl.sheet_names:
             try:
                 temp = xl.parse(sheet, header=0)
-                # Only keep sheets that look like data (not metadata)
                 if len(temp) > 10 and len(temp.columns) > 3:
                     dfs[sheet] = temp
             except Exception:
@@ -30,7 +31,6 @@ def load_dataset(uploaded_file):
         if not dfs:
             raise ValueError("No usable data sheet found in the Excel file.")
 
-        # Pick the sheet with the most rows
         df = max(dfs.values(), key=lambda x: len(x))
         return df
 
@@ -39,11 +39,6 @@ def load_dataset(uploaded_file):
 
 
 def clean_dataset(df):
-    """
-    Automatically clean a retail dataset.
-    Returns: (cleaned_df, quality_report_dict)
-    The quality_report_dict documents every issue found and every fix applied.
-    """
     report = {
         "original_rows": len(df),
         "original_cols": len(df.columns),
@@ -75,9 +70,7 @@ def clean_dataset(df):
         report["issues_found"].append(
             f"{removed} exact duplicate rows found (same Order_ID, same data)."
         )
-        report["fixes_applied"].append(
-            f"Removed {removed} exact duplicate rows."
-        )
+        report["fixes_applied"].append(f"Removed {removed} exact duplicate rows.")
         report["rows_removed"] += removed
         report["trust_score"] -= removed * 3
 
@@ -85,15 +78,15 @@ def clean_dataset(df):
     region_col = _find_col(df, ['region'])
     if region_col:
         region_map = {
-            'south west': 'South-West',
-            'south-west': 'South-West',
+            'south west':    'South-West',
+            'south-west':    'South-West',
             'north central': 'North-Central',
             'north-central': 'North-Central',
-            'south-south': 'South-South',
-            'south-east': 'South-East',
-            'north-west': 'North-West',
-            'south east': 'South-East',
-            'north west': 'North-West',
+            'south-south':   'South-South',
+            'south-east':    'South-East',
+            'north-west':    'North-West',
+            'south east':    'South-East',
+            'north west':    'North-West',
         }
         original_unique = df[region_col].nunique()
         df[region_col] = df[region_col].str.strip().apply(
@@ -115,24 +108,23 @@ def clean_dataset(df):
     cat_col = _find_col(df, ['product_category', 'category'])
     if cat_col:
         cat_map = {
-            'electronics ': 'Electronics',
-            'electronic': 'Electronics',
-            'home & living': 'Home & Living',
-            'home and living': 'Home & Living',
-            'home & living ': 'Home & Living',
-            'beauty & personal care ': 'Beauty & Personal Care',
+            'electronics ':           'Electronics',
+            'electronic':             'Electronics',
+            'home & living':          'Home & Living',
+            'home and living':        'Home & Living',
+            'home & living ':         'Home & Living',
+            'beauty & personal care ':'Beauty & Personal Care',
             'beauty & personal care': 'Beauty & Personal Care',
-            'groceries': 'Groceries',
-            'fashion': 'Fashion',
-            'office supplies': 'Office Supplies',
-            'fitness & wellness': 'Fitness & Wellness',
+            'groceries':              'Groceries',
+            'fashion':                'Fashion',
+            'office supplies':        'Office Supplies',
+            'fitness & wellness':     'Fitness & Wellness',
         }
         original_unique = df[cat_col].nunique()
         df[cat_col] = df[cat_col].str.strip().apply(
             lambda x: cat_map.get(str(x).lower().strip(),
                       cat_map.get(str(x).strip(), x)) if pd.notna(x) else x
         )
-        # Normalise any remaining with title case
         df[cat_col] = df[cat_col].str.strip()
         new_unique = df[cat_col].nunique()
         if new_unique < original_unique:
@@ -149,7 +141,7 @@ def clean_dataset(df):
     # ── 5. Normalise other categorical columns (title case) ───────────────
     for col in str_cols:
         if col in [region_col, cat_col]:
-            continue  # already handled above
+            continue
         n_unique = df[col].nunique(dropna=True)
         if 2 <= n_unique <= 20:
             original = set(df[col].dropna().unique())
@@ -171,7 +163,6 @@ def clean_dataset(df):
             {"column": col, "missing": null_n, "pct": pct}
         )
 
-        # Return_Reason: expected nulls — flag, do not impute
         if 'return_reason' in col.lower() or 'reason' in col.lower():
             report["issues_found"].append(
                 f"'{col}': {null_n} nulls ({pct}%) — expected for non-returned orders. Flagged, not imputed."
@@ -179,7 +170,7 @@ def clean_dataset(df):
             report["imputation_log"].append(
                 f"'{col}': {null_n} nulls → NOT imputed (expected for non-returned orders)."
             )
-            report["trust_score"] -= 1  # minor deduction
+            report["trust_score"] -= 1
             continue
 
         report["trust_score"] -= min(5, int(pct))
@@ -233,8 +224,8 @@ def clean_dataset(df):
 
     # ── 9. Cap trust score ────────────────────────────────────────────────
     report["trust_score"] = max(0, min(100, round(report["trust_score"])))
-    report["final_rows"] = len(df)
-    report["final_cols"] = len(df.columns)
+    report["final_rows"]  = len(df)
+    report["final_cols"]  = len(df.columns)
 
     return df, report
 
@@ -249,19 +240,13 @@ def _find_col(df, keywords):
 
 
 def get_trust_label(score):
-    """Return a human-readable label for the data trust score."""
-    if score >= 90:
-        return "Excellent", "#27ae60"
-    elif score >= 75:
-        return "Good", "#2980b9"
-    elif score >= 60:
-        return "Fair", "#e67e22"
-    else:
-        return "Poor", "#c0392b"
+    if score >= 90: return "Excellent", "#27ae60"
+    elif score >= 75: return "Good", "#2980b9"
+    elif score >= 60: return "Fair", "#e67e22"
+    else: return "Poor", "#c0392b"
 
 
 def df_to_excel_bytes(df):
-    """Convert a DataFrame to Excel bytes for download."""
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Cleaned_Data')
