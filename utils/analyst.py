@@ -22,7 +22,7 @@ def _call_mistral(messages, max_tokens=800, temperature=0.3):
             "max_tokens": max_tokens,
             "temperature": temperature,
         },
-        timeout=90,          # raised from 60 — large briefs take longer
+        timeout=120,
     )
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
@@ -114,8 +114,10 @@ Your role:
 - Give actionable, specific recommendations tied to the numbers above
 - Think like a senior retail consultant for a growing Nigerian business
 - Reference the NGN figures, channel names, product categories from the data
-- Be concise but substantive — 2-4 paragraphs maximum
+- Be concise but substantive — 3 paragraphs maximum per point
 - Always end with ONE specific recommended action
+- Use ### for section headings, ** for bold key terms
+- Keep total response under 500 words so it never gets cut off
 
 NEVER say "I don't have access to the data" — the full data profile is above.
 NEVER give generic advice — tie everything to the specific numbers you have been given.
@@ -128,7 +130,8 @@ NEVER give generic advice — tie everything to the specific numbers you have be
     messages += chat_history
     messages.append({"role": "user", "content": question})
 
-    answer = _call_mistral(messages, max_tokens=800, temperature=0.3)
+    # 3000 tokens — enough for a full structured answer without cutoff
+    answer = _call_mistral(messages, max_tokens=3000, temperature=0.3)
 
     chat_history.append({"role": "user",      "content": question})
     chat_history.append({"role": "assistant", "content": answer})
@@ -138,10 +141,9 @@ NEVER give generic advice — tie everything to the specific numbers you have be
 def generate_executive_brief(df, col_map, prompt):
     """
     Generate executive brief from a fully-formed prompt passed by app.py.
-    max_tokens raised to 2500 so all 5 sections render completely.
     """
     return _call_mistral(
         [{"role": "user", "content": prompt}],
-        max_tokens=2500,     # was 700 / 1000 — needs room for 550-700 word brief
+        max_tokens=2500,
         temperature=0.2,
     )
