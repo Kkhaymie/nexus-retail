@@ -11,3 +11,5 @@ apscheduler==3.10.4
 scikit-learn>=1.7.2
 requests
 reportlab
+validators
+httpx
